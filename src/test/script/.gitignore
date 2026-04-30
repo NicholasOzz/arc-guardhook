@@ -1,0 +1,23 @@
+# Foundry
+cache/
+out/
+broadcast/
+
+# Dependencies
+lib/
+
+# Environment
+.env
+.env.local
+.env.*
+
+# Keys
+PRIVATE_KEY
+private-key.txt
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
