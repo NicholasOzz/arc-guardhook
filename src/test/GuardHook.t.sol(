@@ -1,0 +1,83 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.24;
+
+import "forge-std/Test.sol";
+import "../src/GuardHook.sol";
+
+contract GuardHookTest is Test {
+    GuardHook public guard;
+    address public usdc;
+    address public owner;
+    address public user1;
+    address public user2;
+    address public scammer;
+
+    function setUp() public {
+        owner = address(this);
+        user1 = makeAddr("user1");
+        user2 = makeAddr("user2");
+        scammer = makeAddr("scammer");
+
+        // Deploy mock USDC (since we're on testnet, we use a mock for testing)
+        usdc = address(new MockUSDC());
+        
+        guard = new GuardHook(usdc);
+    }
+
+    function test_CanSecureTransfer() public {
+        MockUSDC(usdc).mint(user1, 100_000 * 1e6);
+        
+        vm.startPrank(user1);
+        MockUSDC(usdc).approve(address(guard), 50_000 * 1e6);
+        
+        guard.secureTransfer(user2, 10_000 * 1e6);
+        vm.stopPrank();
+
+        assertEq(MockUSDC(usdc).balanceOf(user2), 10_000 * 1e6);
+    }
+
+    function test_RevertWhenBlacklisted() public {
+        guard.blacklist(scammer, true);
+        
+        vm.prank(scammer);
+        vm.expectRevert("Address blacklisted");
+        guard.secureTransfer(user2, 1_000 * 1e6);
+    }
+
+    function test_RevertWhenExceedsMaxAmount() public {
+        vm.prank(user1);
+        vm.expectRevert("Exceeds max transfer amount");
+        guard.secureTransfer(user2, 20_000 * 1e6); // Above 10k limit
+    }
+
+    function test_ValidateTx() public {
+        (bool valid, string memory reason) = guard.validateTx(user1, user2, 5_000 * 1e6);
+        assertTrue(valid);
+        assertEq(reason, "Transaction valid");
+    }
+}
+
+// Mock USDC for testing
+contract MockUSDC {
+    mapping(address => uint256) public balanceOf;
+    mapping(address => mapping(address => uint256)) public allowance;
+
+    function mint(address to, uint256 amount) public {
+        balanceOf[to] += amount;
+    }
+
+    function transferFrom(address from, address to, uint256 amount) public returns (bool) {
+        require(balanceOf[from] >= amount, "Insufficient balance");
+        require(allowance[from][msg.sender] >= amount, "Insufficient allowance");
+        
+        balanceOf[from] -= amount;
+        balanceOf[to] += amount;
+        allowance[from][msg.sender] -= amount;
+        return true;
+    }
+
+    function approve(address spender, uint256 amount) public returns (bool) {
+        allowance[msg.sender][spender] = amount;
+        return true;
+    }
+}
